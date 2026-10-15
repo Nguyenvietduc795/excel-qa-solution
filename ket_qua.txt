@@ -1,0 +1,6 @@
+[WRONG] p4_q002: pred='64' gold='83'
+        Q: What score did the second-oldest person receive? Answer with only the integer score.
+[WRONG] p4_q013: pred='Manufacturing, Construction, Agriculture and related' gold='Manufacturing, Construction, Agriculture'
+        Q: Rank the following sectors by the number of employees in 'Transportation and Material Moving': Agriculture, Manufacturing, and Construction. Answer with the three sector names in descending order, separated by a comma and one space, without numbering.
+
+Exact match: 18/20 = 90.0%

@@ -1,0 +1,26 @@
+p4_q004: 'No'  (3.88s, 4395 tok)
+p4_q006: '7668'  (4.83s, 8570 tok)
+p4_q007: '3.14'  (5.15s, 8662 tok)
+p4_q003: '99'  (5.24s, 4405 tok)
+p4_q001: 'Ngo'  (6.28s, 4551 tok)
+p4_q005: 'Airline fares'  (7.1s, 8473 tok)
+p4_q009: '2218'  (3.55s, 14353 tok)
+p4_q012: '35'  (3.02s, 7357 tok)
+p4_q010: 'Leisure and hospitality'  (4.31s, 14275 tok)
+p4_q011: 'Yes'  (4.3s, 14406 tok)
+p4_q014: '265'  (2.96s, 17145 tok)
+['A', 'B', 'C', 'D', 'E', 'F', 'G', 'section']
+p4_q017: '4826'  (1.85s, 4912 tok)
+p4_q018: '34282, 118705'  (3.11s, 8767 tok)
+p4_q015: '134'  (5.2s, 4237 tok)
+Total 16-19: 5547
+Total 20-24: 14564
+Difference: 9017
+p4_q008: '9017'  (12.75s, 15121 tok)
+p4_q013: 'Manufacturing, Construction, Agriculture and related'  (7.03s, 25960 tok)
+p4_q020: '152987'  (2.36s, 8423 tok)
+p4_q002: '64'  (14.27s, 9853 tok)
+p4_q019: '40.60, 37.60'  (6.11s, 8936 tok)
+p4_q016: '35 hours and over'  (10.86s, 4853 tok)
+
+Wrote submission.csv  |  20 questions  |  wall 19.4s  |  avg 5.7s/question  |  avg 9883 tokens/question  |  total cost $0.0054

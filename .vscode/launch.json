@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Chay main.py (20 cau)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "python": "C:\\Python314\\python.exe",
+      "cwd": "${workspaceFolder}",
+      "args": ["--xlsx_dir", "data/xlsx_files", "--queries", "data/queries.json",
+               "--output", "submission.csv", "--log_dir", "logs"],
+      "console": "integratedTerminal"
+    }
+  ]
+}
