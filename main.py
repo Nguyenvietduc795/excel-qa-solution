@@ -206,7 +206,7 @@ def main(argv=None):
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    with out.open("w", newline="", encoding="utf-8-sig") as f:
+    with out.open("w", newline="", encoding="utf-8") as f:  # UTF-8 khong BOM (yeu cau BTC)
         w = csv.writer(f)
         w.writerow(["id", "answer"])
         for q in queries:

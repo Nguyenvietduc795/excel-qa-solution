@@ -61,7 +61,7 @@ The design principle: **the LLM only maps the question to cells and columns by w
 - **Chains.** Each chain is LLM code → run → on an exception or a `type_problem`, send feedback and retry, up to `max_retries`. A mistyped answer is kept as a fallback.
 - **Voting.** Default `--votes 1`: chain 0 (temperature 0) only; chain 1 (0.6) runs only when chain 0 yields nothing. With `--votes 3`, the first 2 chains run in parallel and a third runs only if they disagree; on a tie, chain 0 wins.
 - **Direct fallback.** If no chain yields an answer, the LLM is asked for the answer directly and that text still goes through `format_answer`.
-- **Output.** The CSV is always written in query order (`utf-8-sig`), even when the API key is missing. A failed question gets an empty answer.
+- **Output.** The CSV is always written in query order (UTF-8 without BOM, per the organizers), even when the API key is missing. A failed question gets an empty answer.
 
 ## Notes
 
