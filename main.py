@@ -210,7 +210,8 @@ def main(argv=None):
         w = csv.writer(f)
         w.writerow(["id", "answer"])
         for q in queries:
-            w.writerow([q["id"], results[q["id"]]["answer"]])
+            ans = " ".join(str(results[q["id"]]["answer"] or "").split())  # dam bao 1 dong / id
+            w.writerow([q["id"], ans])
 
     if args.log_dir:
         d = Path(args.log_dir)

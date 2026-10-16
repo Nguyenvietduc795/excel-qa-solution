@@ -15,6 +15,32 @@ _WORD_NUM = {"zero": 0, "no": 0, "one": 1, "a single": 1, "single": 1, "two": 2,
              "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
 _NUM_WORD = r"(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)"
 _PLACES = {"tenth": 1, "hundredth": 2, "thousandth": 3}
+# cau hoi khong phai tieng Anh: so chu so thap phan (vi / ko / zh / ja)
+_VI_NUM = {"một": 1, "hai": 2, "ba": 3, "bốn": 4}
+_KO_ORD = {"첫째": 1, "첫": 1, "둘째": 2, "두": 2, "셋째": 3, "세": 3, "넷째": 4}
+_ZH_NUM = {"一": 1, "两": 2, "二": 2, "三": 3, "四": 4}
+_VI_PLACES = {"phần mười": 1, "phần trăm": 2, "phần nghìn": 3, "phần ngàn": 3}
+
+
+def _decimals_i18n(q: str):
+    """So chu so thap phan yeu cau trong cau hoi tieng Viet / Han / Trung / Nhat (None neu khong co)."""
+    m = re.search(r"(\d+|một|hai|ba|bốn)\s+chữ số\s+(thập phân|sau dấu)", q)
+    if m:
+        return int(m.group(1)) if m.group(1).isdigit() else _VI_NUM[m.group(1)]
+    m = re.search(r"hàng (phần mười|phần trăm|phần nghìn|phần ngàn)", q)
+    if m:
+        return _VI_PLACES[m.group(1)]
+    m = re.search(r"소수점\s*(?:이하\s*)?(\d+|첫째|첫|둘째|두|셋째|세|넷째)\s*(?:번째\s*)?자리", q)
+    if m:
+        return int(m.group(1)) if m.group(1).isdigit() else _KO_ORD[m.group(1)]
+    m = re.search(r"(?:保留|精确到|四舍五入到)\s*(\d+|一|两|二|三|四)\s*位小数", q) \
+        or re.search(r"小数点(?:以下)?\s*(?:第)?\s*(\d+|一|二|三|四)\s*(?:桁|位)", q)
+    if m:
+        return int(m.group(1)) if m.group(1).isdigit() else _ZH_NUM[m.group(1)]
+    return None
+
+
+_INT_I18N = r"số nguyên|정수|整数"
 _DATE_FORMATS = [  # (mau trong cau hoi, strftime)
     (r"yyyy-mm-dd", "%Y-%m-%d"), (r"yyyy/mm/dd", "%Y/%m/%d"), (r"mm/dd/yyyy", "%m/%d/%Y"),
     (r"dd/mm/yyyy", "%d/%m/%Y"), (r"dd-mm-yyyy", "%d-%m-%Y"), (r"mm-dd-yyyy", "%m-%d-%Y"),
@@ -40,13 +66,16 @@ def parse_spec(query: str) -> dict:
         spec["truefalse"] = True
     m = re.search(_NUM_WORD + r"\s+decimal", q) or re.search(r"\b(\d+)\s*(d\.p\.|dp)\b", q)
     m2 = re.search(r"nearest (tenth|hundredth|thousandth)", q)
+    d_i18n = _decimals_i18n(q)
     if m:
         g = m.group(1)
         spec["decimals"] = int(g) if g.isdigit() else _WORD_NUM[g]
     elif m2:
         spec["decimals"] = _PLACES[m2.group(1)]
+    elif d_i18n is not None:
+        spec["decimals"] = d_i18n
     elif re.search(r"\b(an |the |only the |two |three )?integers?\b|whole numbers?|no decimal|without decimal"
-                   r"|nearest (unit|one)\b", q):
+                   r"|nearest (unit|one)\b|" + _INT_I18N, q):
         spec["integer"] = True
     if spec["decimals"] == 0:
         spec["decimals"], spec["integer"] = None, True
@@ -56,6 +85,10 @@ def parse_spec(query: str) -> dict:
         if re.search(r"\b(with|include|including|followed by|add|append|as)\b[^.;]{0,30}" + pct, q) \
                 or re.search(r"e\.g\.?,?\s*['\"`]?-?[\d.]+%", q):
             spec["percent_sign"] = True
+    # tieng Viet / Han / Trung: "kem dau %" (nhung khong phai "khong kem dau %"), "% 기호를 포함", "带%"
+    if re.search(r"(?<!không )(kèm|kèm theo|có|thêm) (dấu|ký hiệu) %|% ?기호를? (붙|포함)|(带|加上?)\s*%", q) \
+            and not re.search(r"(không|bỏ) (kèm |có |có kèm )?(dấu|ký hiệu) %|% ?기호 ?(없이|를 제외|빼고)|不(带|加)\s*%", q):
+        spec["percent_sign"] = True
     if re.search(r"thousands?[- ]separators?|commas? (as|for) (the )?thousands?", q) \
             and not re.search(r"(without|no|omit|exclude)[^.;]{0,25}(thousands?[- ]separators?|commas)", q):
         spec["thousands"] = True
@@ -76,6 +109,7 @@ def parse_spec(query: str) -> dict:
     tpl = re.search(r"[`'\"]([^`'\"]{1,60},[^`'\"]{1,60})[`'\"]", instr)       # vd "Answer as `men, women`"
     if spec["count"] is None and tpl:
         spec["count"] = tpl.group(1).count(",") + 1
+    spec["template"] = tpl.group(1) if tpl else None
     return spec
 
 
@@ -202,6 +236,9 @@ def result_hint(query: str) -> str:
         kind = None
     if spec["count"] and spec["count"] > 1:
         each = f", each {kind}" if kind else ""
+        if kind and spec["template"] and re.search(r"\b(group|name|category|sheet|class|type|label|sector|"
+                                                   r"industry|country|region|item)\b", spec["template"]):
+            each = f" (`{spec['template']}`): the name/label slot as a string, the other slots as {kind}"
         return f"a list of {spec['count']} values in the requested order{each}"
     return kind or ""
 
@@ -223,5 +260,14 @@ def type_problem(result, query: str) -> str | None:
         if spec["decimals"] is not None or spec["integer"]:
             if isinstance(v, bool) or not (isinstance(v, (int, float)) or
                                            (isinstance(v, str) and _to_number(v) is not None)):
+                # danh sach theo mau `ten, so`: o ten duoc la chuoi, mien la con it nhat 1 so
+                if len(values) > 1 and spec["template"] and isinstance(v, str) \
+                        and any(_is_num(_plain(x)) for x in values):
+                    continue
                 return f"the question asks for a number, but `result` contains {v!r}"
     return None
+
+
+def _is_num(v) -> bool:
+    return not isinstance(v, bool) and (isinstance(v, (int, float))
+                                        or (isinstance(v, str) and _to_number(v) is not None))

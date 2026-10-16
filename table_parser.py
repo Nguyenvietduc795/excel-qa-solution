@@ -162,7 +162,17 @@ def _row_kind(raw_row):
     vals = [(j, v) for j, v in enumerate(raw_row) if not _is_empty(v)]
     if not vals:
         return "blank"
-    if any(_is_data_value(v) for _, v in vals):
+    # "2 | Output per job: ..." = so thu tu bang + tieu de -> nhan, khong phai du lieu
+    if len(vals) == 2 and vals[0][0] == 0 and _is_number(vals[0][1]) and float(vals[0][1]).is_integer() \
+            and 0 < vals[0][1] < 1000 and isinstance(vals[1][1], str) and len(vals[1][1].split()) >= 3:
+        return "label"
+    data = [v for _, v in vals if _is_data_value(v)]
+    # dong ma so trong tieu de: "Divisions | 10-12 | 13-15 | 28 | 29-30" (chi 1 so, con lai la ma dang chu)
+    texts = [v for _, v in vals if isinstance(v, str)]
+    if len(vals) >= 4 and len(data) == 1 and len(texts) == len(vals) - 1 \
+            and sum(bool(re.fullmatch(r"\s*\d[\d,\-\s]*", v)) for v in texts) * 2 >= len(texts):
+        return "header"
+    if data:
         return "data"
     if len(vals) == 1 and vals[0][0] == 0:
         return "label"           # chi co text o cot dau: section / tieu de / ghi chu
@@ -273,7 +283,7 @@ def _parse_block(g: _Grid, sheet, sheet_index, table_offset, off) -> list[Table]
     while i < n:
         if kinds[i] != "header":
             if kinds[i] == "label":
-                pre_text.append(clean_text(raw[i][0]))
+                pre_text.append(" ".join(clean_text(v) for v in raw[i] if not _is_empty(v)))
             if kinds[i] == "data" and not tables:
                 # bang khong co header -> dung ten cot mac dinh
                 i = _consume_table(g, kinds, sheet, [], i, tables, pre_text, table_offset, off)
@@ -286,6 +296,13 @@ def _parse_block(g: _Grid, sheet, sheet_index, table_offset, off) -> list[Table]
         while i < n and (kinds[i] == "header" or (kinds[i] == "blank" and i in a_merge_header)):
             i += 1
         hdr = list(range(h0, i))
+        # dong tieu de / chu thich hep (1-2 o, khong gop ngang) o dau khoi header rong -> la text truoc bang
+        width = max(sum(not _is_empty(v) for v in raw[k]) for k in hdr)
+        hmerge = {r0 for r0, c0, r1, c1 in merges if c1 > c0}
+        while len(hdr) > 1 and width >= 5 and hdr[0] not in hmerge \
+                and sum(not _is_empty(v) for v in raw[hdr[0]]) <= 2:
+            pre_text.append(" ".join(clean_text(v) for v in raw[hdr[0]] if not _is_empty(v)))
+            hdr.pop(0)
         j = i
         while j < n and kinds[j] == "blank":
             j += 1
@@ -311,6 +328,12 @@ def _parse_block(g: _Grid, sheet, sheet_index, table_offset, off) -> list[Table]
         i = _consume_table(g, kinds, sheet, hdr, j, tables, pre_text, table_offset, off)
         pre_text = []
     return tables
+
+
+def _wrapped(prev: str, cur: str) -> bool:
+    """`cur` la phan tiep theo cua `prev` bi xuong dong (khong phai cap tieu de moi)."""
+    return bool(re.search(r"[,&]$|[a-z]-$", prev)) and not re.match(r"\d", cur) \
+        or (cur.startswith("&") and not prev.endswith("&"))
 
 
 def _consume_table(g: _Grid, kinds, sheet, hdr, start, tables, pre_text, table_offset, off):
@@ -340,7 +363,10 @@ def _consume_table(g: _Grid, kinds, sheet, hdr, start, tables, pre_text, table_o
                 s = str(int(v)) if float(v).is_integer() else str(v)
             else:
                 s = clean_text(v)
-            if s and (not parts or parts[-1] != s):
+            if s and parts and r - 1 in hdr and filled[r - 1][c] is raw[r - 1][c] and _wrapped(parts[-1], s):
+                # chu bi xuong dong trong o tieu de: "Rubber," / "plastics &" / "Pharmaceutic-" "als"
+                parts[-1] = parts[-1][:-1] + s if parts[-1].endswith("-") else parts[-1] + " " + s
+            elif s and (not parts or parts[-1] != s):
                 parts.append(s)
         t.columns[letter[c]] = " | ".join(parts) if parts else f"(column {letter[c]})"
     # tieu de: dong text truoc bang + caption cot A neu co
@@ -365,7 +391,7 @@ def _consume_table(g: _Grid, kinds, sheet, hdr, start, tables, pre_text, table_o
             i += 1
             continue
         if k == "label":
-            txt = str(raw[i][0]).strip()
+            txt = " ".join(str(v).strip() for v in raw[i] if not _is_empty(v))
             if in_notes or NOTE_PREFIX.search(txt) or len(txt) > 90:
                 in_notes = True
                 t.notes.append(clean_text(txt))

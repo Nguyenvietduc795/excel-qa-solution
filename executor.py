@@ -35,9 +35,9 @@ class ExecError(Exception):
 def extract_code(text: str) -> str:
     """Lay khoi ```python ...``` (hoac toan bo text neu khong co)."""
     blocks = re.findall(r"```(?:python|py)?\s*\n(.*?)```", text, re.S)
-    if blocks:
-        return max(blocks, key=len).strip()
-    return text.strip().strip("`")
+    code = max(blocks, key=len).strip() if blocks else text.strip().strip("`")
+    # LLM doi khi viet "```\npython\n..." -> dong dau chi co chu 'python' gay NameError
+    return re.sub(r"\A(?:python3?|py)[ \t]*\n", "", code.strip(), flags=re.I)
 
 
 def normalize_result(v):

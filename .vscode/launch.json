@@ -11,6 +11,17 @@
       "args": ["--xlsx_dir", "data/xlsx_files", "--queries", "data/queries.json",
                "--output", "submission.csv", "--log_dir", "logs"],
       "console": "integratedTerminal"
+    },
+    {
+      "name": "Chay main.py (bo 2, 30 cau)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "python": "C:\\Python314\\python.exe",
+      "cwd": "${workspaceFolder}",
+      "args": ["--xlsx_dir", "../../BO2/xlsx_files", "--queries", "../../BO2/queries.json",
+               "--output", "submission_bo2.csv", "--log_dir", "logs_bo2"],
+      "console": "integratedTerminal"
     }
   ]
 }

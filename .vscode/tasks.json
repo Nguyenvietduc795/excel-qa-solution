@@ -9,6 +9,15 @@
       "group": { "kind": "build", "isDefault": true },
       "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
       "problemMatcher": []
+    },
+    {
+      "label": "Chay bo 2 (30 cau) + cham diem",
+      "type": "shell",
+      "command": "C:\\Python314\\python.exe main.py --xlsx_dir ../../BO2/xlsx_files --queries ../../BO2/queries.json --output submission_bo2.csv --log_dir logs_bo2; C:\\Python314\\python.exe evaluate.py --pred submission_bo2.csv --gold ../../BO2/sample_submission.csv --queries ../../BO2/queries.json",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "build",
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": []
     }
   ]
 }

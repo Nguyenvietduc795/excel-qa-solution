@@ -3,3 +3,6 @@ __pycache__/
 logs/
 submission.csv
 Key.txt
+logs_bo2/
+submission_bo2.csv
+run*.txt
