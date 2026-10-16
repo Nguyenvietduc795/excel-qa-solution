@@ -28,7 +28,7 @@ from openpyxl.utils import column_index_from_string, get_column_letter
 
 MAX_HEADER_ROWS = 6          # khoi tieu de dai hon -> phan du coi la du lieu
 MAX_RENDER_ROWS = 400        # so dong toi da in ra cho LLM (df van giu du)
-NOTE_PREFIX = re.compile(r"^(footnotes?|notes?|source|sources)\b|^\(\d+\)\s|^\d+/\s", re.I)
+NOTE_PREFIX = re.compile(r"^(footnotes?|notes?|source|sources|ghi chú|chú thích|nguồn)\b|^\(\d+\)\s|^\d+/\s", re.I)
 MISSING = {"", "-", "–", "—", "n/a", "na", "(na)", "(x)", "x", "..", "…"}
 
 _FOOTNOTE = re.compile(r"(\s*\(\d+\))+\s*$")      # "Total(2)", "Hospital services(1)(3)"
@@ -64,6 +64,15 @@ def clean_text(s) -> str:
         prev = s
         s = _SLASH_NOTE.sub("", _FOOTNOTE.sub("", s)).strip()
     return s
+
+
+_GLUED_NOTE = re.compile(r"(?<=[a-z\)])\d{1,2}(,\d{1,2})*$")      # "Private industry3", "mining3,4"
+
+
+def clean_label(s) -> str:
+    """clean_text + bo so chu thich dinh lien cuoi nhan (chi dung cho tieu de nhom / ten cot, khong cho du lieu)."""
+    s = clean_text(s)
+    return _GLUED_NOTE.sub("", s).strip() if not re.fullmatch(r"[A-Za-z]+\d+", s) else s
 
 
 def _is_empty(v) -> bool:
@@ -162,17 +171,7 @@ def _row_kind(raw_row):
     vals = [(j, v) for j, v in enumerate(raw_row) if not _is_empty(v)]
     if not vals:
         return "blank"
-    # "2 | Output per job: ..." = so thu tu bang + tieu de -> nhan, khong phai du lieu
-    if len(vals) == 2 and vals[0][0] == 0 and _is_number(vals[0][1]) and float(vals[0][1]).is_integer() \
-            and 0 < vals[0][1] < 1000 and isinstance(vals[1][1], str) and len(vals[1][1].split()) >= 3:
-        return "label"
-    data = [v for _, v in vals if _is_data_value(v)]
-    # dong ma so trong tieu de: "Divisions | 10-12 | 13-15 | 28 | 29-30" (chi 1 so, con lai la ma dang chu)
-    texts = [v for _, v in vals if isinstance(v, str)]
-    if len(vals) >= 4 and len(data) == 1 and len(texts) == len(vals) - 1 \
-            and sum(bool(re.fullmatch(r"\s*\d[\d,\-\s]*", v)) for v in texts) * 2 >= len(texts):
-        return "header"
-    if data:
+    if any(_is_data_value(v) for _, v in vals):
         return "data"
     if len(vals) == 1 and vals[0][0] == 0:
         return "label"           # chi co text o cot dau: section / tieu de / ghi chu
@@ -243,6 +242,54 @@ def parse_sheet(ws, sheet_index: int, table_offset: int) -> list[Table]:
     return tables
 
 
+def _late_header(raw, kinds, start, look=6):
+    """Bang 'khong header' nhung vai dong dau chi la tua (<= 2 o, vd so trang + tieu de) va ngay sau la khoi header
+    nhieu dong roi den du lieu -> tra ve vi tri bat dau khoi header that; nguoc lai None."""
+    n = len(raw)
+    for j in range(start, min(n, start + look)):
+        if kinds[j] == "header":
+            k = j
+            while k < n and kinds[k] == "header":
+                k += 1
+            nxt = k
+            while nxt < n and kinds[nxt] == "blank":
+                nxt += 1
+            if 2 <= k - j <= MAX_HEADER_ROWS and nxt < n and kinds[nxt] in ("data", "label"):
+                # dong chi co 1 o o dau khoi (vd 'United Kingdom', 'Seasonally adjusted') la tua, khong phai ten cot
+                while k - j > 2 and sum(not _is_empty(v) for v in raw[j]) == 1:
+                    j += 1
+                return j
+            return None
+        if kinds[j] != "blank" and sum(not _is_empty(v) for v in raw[j]) > 2:
+            return None                    # dong du lieu that -> giu nguyen cach cu
+    return None
+
+
+def _join_header_parts(parts: list) -> str:
+    """Ghep cac tang tieu de bang ' | ', nhung noi lien cac manh cua MOT tieu de bi ngat dong
+    ('Rubber,' 'plastics &' 'non-metallic' 'minerals' -> 'Rubber, plastics & non-metallic minerals';
+    'Pharmaceutic-' 'als' -> 'Pharmaceuticals')."""
+    out, prev_group, piece = "", False, ""
+    for p, is_group in parts:
+        if not out:
+            out = piece = p
+        elif prev_group:                       # tieu de cha gop ngang nhieu cot -> luon la mot tang rieng
+            out += " | " + p
+            piece = p
+        elif out.endswith("-") and p[:1].islower():
+            left = re.split(r"[\s|]", out[:-1])[-1]
+            out = (out if left.lower() in _KEEP_HYPHEN else out[:-1]) + p
+            piece += p
+        elif out.endswith((",", "&", "/", "(")) or p[:1] in "&(" or (p[:1].islower() and piece[:1].isupper()):
+            out += " " + p
+            piece += " " + p
+        else:
+            out += " | " + p
+            piece = p
+        prev_group = is_group
+    return out
+
+
 def _header_depth(hdr, g: _Grid) -> int:
     """So dong header thuc su cua 1 khoi dong toan chu: cac dong o gop ngang / in dam o dau khoi."""
     h0, last = hdr[0], hdr[-1]
@@ -283,8 +330,16 @@ def _parse_block(g: _Grid, sheet, sheet_index, table_offset, off) -> list[Table]
     while i < n:
         if kinds[i] != "header":
             if kinds[i] == "label":
-                pre_text.append(" ".join(clean_text(v) for v in raw[i] if not _is_empty(v)))
+                pre_text.append(clean_text(raw[i][0]))
             if kinds[i] == "data" and not tables:
+                late = _late_header(raw, kinds, i)
+                if late is not None:
+                    # vd dong tua "2 | Output per job ..." (co 1 con so lac) dung truoc khoi header that -> la tieu de
+                    for k in range(i, late):
+                        if kinds[k] != "blank":
+                            pre_text.append(" ".join(clean_text(v) for v in raw[k] if not _is_empty(v)))
+                    i = late
+                    continue
                 # bang khong co header -> dung ten cot mac dinh
                 i = _consume_table(g, kinds, sheet, [], i, tables, pre_text, table_offset, off)
                 pre_text = []
@@ -296,13 +351,6 @@ def _parse_block(g: _Grid, sheet, sheet_index, table_offset, off) -> list[Table]
         while i < n and (kinds[i] == "header" or (kinds[i] == "blank" and i in a_merge_header)):
             i += 1
         hdr = list(range(h0, i))
-        # dong tieu de / chu thich hep (1-2 o, khong gop ngang) o dau khoi header rong -> la text truoc bang
-        width = max(sum(not _is_empty(v) for v in raw[k]) for k in hdr)
-        hmerge = {r0 for r0, c0, r1, c1 in merges if c1 > c0}
-        while len(hdr) > 1 and width >= 5 and hdr[0] not in hmerge \
-                and sum(not _is_empty(v) for v in raw[hdr[0]]) <= 2:
-            pre_text.append(" ".join(clean_text(v) for v in raw[hdr[0]] if not _is_empty(v)))
-            hdr.pop(0)
         j = i
         while j < n and kinds[j] == "blank":
             j += 1
@@ -328,12 +376,6 @@ def _parse_block(g: _Grid, sheet, sheet_index, table_offset, off) -> list[Table]
         i = _consume_table(g, kinds, sheet, hdr, j, tables, pre_text, table_offset, off)
         pre_text = []
     return tables
-
-
-def _wrapped(prev: str, cur: str) -> bool:
-    """`cur` la phan tiep theo cua `prev` bi xuong dong (khong phai cap tieu de moi)."""
-    return bool(re.search(r"[,&]$|[a-z]-$", prev)) and not re.match(r"\d", cur) \
-        or (cur.startswith("&") and not prev.endswith("&"))
 
 
 def _consume_table(g: _Grid, kinds, sheet, hdr, start, tables, pre_text, table_offset, off):
@@ -362,13 +404,12 @@ def _consume_table(g: _Grid, kinds, sheet, hdr, start, tables, pre_text, table_o
             elif _is_number(v):
                 s = str(int(v)) if float(v).is_integer() else str(v)
             else:
-                s = clean_text(v)
-            if s and parts and r - 1 in hdr and filled[r - 1][c] is raw[r - 1][c] and _wrapped(parts[-1], s):
-                # chu bi xuong dong trong o tieu de: "Rubber," / "plastics &" / "Pharmaceutic-" "als"
-                parts[-1] = parts[-1][:-1] + s if parts[-1].endswith("-") else parts[-1] + " " + s
-            elif s and (not parts or parts[-1] != s):
-                parts.append(s)
-        t.columns[letter[c]] = " | ".join(parts) if parts else f"(column {letter[c]})"
+                s = clean_label(v)
+            # tieu de nhom: o gop ngang (cung gia tri o cot ben canh trong cung dong)
+            group = any(0 <= cc < ncols and filled[r][cc] is not None and filled[r][cc] == v for cc in (c - 1, c + 1))
+            if s and (not parts or parts[-1][0] != s):
+                parts.append((s, group))
+        t.columns[letter[c]] = _join_header_parts(parts) if parts else f"(column {letter[c]})"
     # tieu de: dong text truoc bang + caption cot A neu co
     t.title = " ".join(title_parts)
     # --- du lieu -------------------------------------------------------------
@@ -391,13 +432,13 @@ def _consume_table(g: _Grid, kinds, sheet, hdr, start, tables, pre_text, table_o
             i += 1
             continue
         if k == "label":
-            txt = " ".join(str(v).strip() for v in raw[i] if not _is_empty(v))
+            txt = str(raw[i][0]).strip()
             if in_notes or NOTE_PREFIX.search(txt) or len(txt) > 90:
                 in_notes = True
                 t.notes.append(clean_text(txt))
                 t.lines.append((i + 1, "note", clean_text(txt)))
             else:
-                lab = clean_text(txt)
+                lab = clean_label(txt)
                 if lab.isupper():
                     root, sub = lab, None
                     root_has_data = False
@@ -599,8 +640,8 @@ def _fmt(v) -> str:
         return ""
     if isinstance(v, pd.Timestamp):
         return v.strftime("%Y-%m-%d") if v.time() == dt.time(0) else str(v)
-    if isinstance(v, float):
-        return str(int(v)) if v.is_integer() else repr(round(v, 10))
+    if isinstance(v, float):                 # ke ca numpy.float64 (repr la "np.float64(...)")
+        return str(int(v)) if v.is_integer() else repr(round(float(v), 10))
     return str(v)
 
 

@@ -57,8 +57,7 @@ Tuỳ chọn chính:
 |---|---|---|
 | `--model` | `qwen/qwen3.7-flash` | model trên OpenRouter (hoặc biến `OPENROUTER_MODEL`) |
 | `--reasoning` | `off` | `off/low/medium/high/default` – chế độ suy luận của model |
-| `--workers` | 8 | số câu xử lý song song |
-| `--votes` | 1 | `1` = một lời giải temperature 0, chỉ thử lời giải thứ 2 khi lời giải đầu thất bại (nhanh, ít token). `3` = bỏ phiếu: 2 lời giải song song, khác nhau thì thêm lời giải thứ 3, lấy đa số |
+| `--votes` | 3 | bỏ phiếu: 2 lời giải song song (temperature 0 và 0.6), khác nhau thì thêm lời giải thứ 3, lấy đa số. `1` = chỉ một lời giải temperature 0 (nhanh, ít token) |
 | `--max_retries` | 2 | số lần gửi lỗi (hoặc kết quả sai kiểu/số lượng) lại cho LLM sửa code |
 | `--no_direct_fallback` | – | tắt bước dự phòng: khi mọi lần chạy code đều lỗi thì hỏi thẳng LLM đáp án |
 | `--max_cost` | 0.08 | USD tối đa mỗi câu (BTC giới hạn 0.10) |
@@ -90,8 +89,12 @@ query ─────────────────────► [2] llm
 2. **llm.py**: prompt gồm bảng dạng text gọn + câu hỏi + kiểu `result` mong đợi (số / bool / danh sách N giá trị);
    LLM chỉ viết code, không tự định dạng. Prompt có quy tắc: chọn đúng bảng/khối, dòng con lồng nhau, dùng sẵn dòng
    Total thay vì tự cộng, công thức hiệu / phần trăm / % thay đổi, khớp nhãn không phân biệt hoa thường.
+   Thêm **ghi chú riêng cho từng câu** (sinh bằng Python, đặt ngay dưới câu hỏi, chỉ khi cần): bảng chia nhóm theo
+   section (trả tên nhóm hay nhãn dòng), nhãn dòng lặp dưới nhiều dòng cha, tuổi tính theo ngày sự kiện, dòng Total,
+   trung bình "across all", cột cha có nhiều cột con, cột cấp độ (indent level), câu hỏi không phải tiếng Anh.
 3. **executor.py**: chạy code với builtins hạn chế (không `open`, chỉ import thư viện tính toán), có timeout;
-   chuẩn hoá kết quả (Series/numpy/dict → kiểu Python), kiểm tra rỗng/NaN.
+   chuẩn hoá kết quả (Series/numpy/dict → kiểu Python), kiểm tra rỗng/NaN. Lỗi `KeyError` do dùng tên cột/nhãn dòng
+   thay vì chữ cái cột/số dòng được tự sửa ngay trong code (không tốn lượt gọi LLM); lần gửi lại cho LLM sửa tăng temperature.
 4. **formatter.py** (không dùng LLM): đọc yêu cầu định dạng trong câu hỏi – số nguyên, N chữ số thập phân
    (`two decimal places`, `nearest tenth`, `2 dp`; làm tròn half-up, khử sai số dấu phẩy động), Yes/No, True/False,
    dấu `%`, dấu phẩy hàng nghìn, định dạng ngày (`MM/DD/YYYY`, `Month D, YYYY`...), nhiều giá trị cách nhau `", "`
