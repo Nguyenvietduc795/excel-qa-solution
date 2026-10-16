@@ -1,0 +1,10 @@
+.env
+Key.txt
+logs/
+logs_bo2/
+data/
+submission*.csv
+run*.txt
+__pycache__/
+.git/
+.vscode/

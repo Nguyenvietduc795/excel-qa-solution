@@ -5,7 +5,7 @@ Trả lời tự động câu hỏi ngôn ngữ tự nhiên trên file Excel (nh
 ## Cài đặt
 
 ```bash
-python -m pip install -r requirements.txt      # Python >= 3.9
+python -m pip install -r requirements.txt      # Python >= 3.11 (đã kiểm thử: 3.14, pandas 3.0)
 ```
 
 Cấu hình API key **ngoài mã nguồn** (chọn 1 cách):
@@ -18,7 +18,32 @@ $env:OPENROUTER_API_KEY="sk-or-v1-..."
 # hoặc: copy .env.example thành .env (cùng thư mục main.py hoặc thư mục đang chạy) rồi điền key
 ```
 
-## Chạy
+## Chạy bằng Docker (Linux amd64, không cần GPU)
+
+`Dockerfile` nằm ở thư mục gốc; `ENTRYPOINT` là `entrypoint.py`. Khoá API **không** nằm trong ảnh, truyền lúc chạy bằng `-e`.
+
+```bash
+docker build --platform linux/amd64 -t ai26c0093 .
+
+# Cách 1: mount thư mục dữ liệu (chứa queries.json và các file .xlsx, kể cả trong thư mục con) vào /data,
+#         kết quả ghi ra /output/submission.csv
+docker run --rm -e OPENROUTER_API_KEY=sk-or-v1-... \
+  -v /duong_dan/du_lieu:/data:ro -v /duong_dan/ket_qua:/output ai26c0093
+
+# Cách 2: chỉ rõ tham số (giống main.py)
+docker run --rm -e OPENROUTER_API_KEY=sk-or-v1-... -v /duong_dan/du_lieu:/data -v /duong_dan/ket_qua:/output \
+  ai26c0093 --xlsx_dir /data/xlsx_files --queries /data/queries.json --output /output/submission.csv
+
+# Cách 3: tham số vị trí: <thư_mục_dữ_liệu> [<file_kết_quả>]
+docker run --rm -e OPENROUTER_API_KEY=sk-or-v1-... -v /duong_dan/du_lieu:/data ai26c0093 /data /data/submission.csv
+```
+
+Không truyền tham số thì `entrypoint.py` tự tìm `queries.json` trong `INPUT_DIR`, `/data`, `/input`, `/app/data`, `/workspace`
+rồi thư mục hiện tại; ghi kết quả vào `OUTPUT`, hoặc `/output/submission.csv` nếu có thư mục `/output`, hoặc cạnh
+`queries.json`, và luôn chép thêm một bản ra `/app/submission.csv`. Biến môi trường tuỳ chọn: `INPUT_DIR`, `XLSX_DIR`,
+`QUERIES`, `OUTPUT`, `OPENROUTER_MODEL`.
+
+## Chạy trực tiếp bằng Python
 
 ```bash
 python main.py --xlsx_dir <thư_mục_xlsx> --queries <queries.json> --output submission.csv
@@ -85,6 +110,8 @@ llm.py            bước 2 – prompt + gọi OpenRouter (retry khi 429/5xx)
 executor.py       bước 3 – chạy code an toàn
 formatter.py      bước 4 – định dạng đáp án
 evaluate.py       tự chấm Exact Match
+entrypoint.py     điểm vào Docker: tự tìm dữ liệu rồi gọi main.py
+Dockerfile        ảnh Linux amd64 (python:3.14-slim)
 ```
 
 ## Chạy nhanh (cho đồng đội)
